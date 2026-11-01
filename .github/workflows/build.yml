@@ -21,7 +21,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-          cache: gradle
 
       # Chaquopy يحتاج Python على جهاز البناء بنفس إصدار التطبيق (3.13)
       - uses: actions/setup-python@v5
