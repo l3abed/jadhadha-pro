@@ -5,11 +5,22 @@ on:
   push:
     branches: [ "main", "master" ]
     paths:
-      - "jadhadha-pro.zip"
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradle/**"
+      - "gradlew"
+      - "tests/**"
       - ".github/workflows/build.yml"
 
 permissions:
   contents: write
+
+env:
+  JADHADHA_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+  JADHADHA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+  JADHADHA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
 jobs:
   build:
@@ -21,23 +32,44 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          cache: gradle
 
       # Chaquopy يحتاج Python على جهاز البناء بنفس إصدار التطبيق (3.13)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
-      - name: Unpack project
-        run: |
-          rm -rf proj && mkdir proj
-          unzip -q jadhadha-pro.zip -d proj
-          ls proj
+      - name: Install Python test dependencies
+        run: python -m pip install --disable-pip-version-check "python-docx==1.2.0"
 
-      - name: Scan for leaked keys
+      - name: Run Python regression tests
+        env:
+          PYTHONPATH: app/src/main/python
+        run: python -m unittest discover -s tests -v
+
+      - name: Scan for leaked secrets and signing files
         run: |
-          if grep -rInE "AIza|AQ\.[A-Za-z0-9_-]{20,}" proj/app/src; then
-            echo "::error::Leaked API key pattern detected"; exit 1
+          set -e
+          if find . -path ./.git -prune -o -type f \( -name '*.jks' -o -name '*.keystore' \) -print | grep -q .; then
+            echo "::error::Signing keystore committed to repository"; exit 1
           fi
+          if grep -rInE \
+              'AIza[0-9A-Za-z_-]{20,}|AQ\.[A-Za-z0-9_-]{20,}|-----BEGIN (RSA |EC )?PRIVATE KEY-----|jadhadha123|storePassword[[:space:]]*=[[:space:]]*"[^"$]|keyPassword[[:space:]]*=[[:space:]]*"[^"$]' \
+              app build.gradle.kts settings.gradle.kts gradle README.md 2>/dev/null; then
+            echo "::error::Possible secret detected in repository"; exit 1
+          fi
+
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is not configured"; exit 1
+          fi
+          STORE_FILE="$RUNNER_TEMP/release.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$STORE_FILE"
+          chmod 600 "$STORE_FILE"
+          echo "JADHADHA_STORE_FILE=$STORE_FILE" >> "$GITHUB_ENV"
 
       - name: Accept Android licenses and install platform
         run: |
@@ -45,14 +77,15 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null || true
 
       - name: Build release APK
-        working-directory: proj
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace
+          VERSION_CODE=$((2300 + ${{ github.run_number }}))
+          VERSION_NAME="2.0.${{ github.run_number }}"
+          ./gradlew assembleRelease -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME" --stacktrace
 
       - name: Collect APK
         run: |
-          cp proj/app/build/outputs/apk/release/app-release.apk jadhadha-pro.apk
+          cp app/build/outputs/apk/release/app-release.apk jadhadha-pro.apk
           ls -la jadhadha-pro.apk
 
       - uses: actions/upload-artifact@v4
@@ -65,6 +98,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v2.0.${{ github.run_number }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then gh release delete "$TAG" --yes; fi
           gh release create "$TAG" jadhadha-pro.apk \
             --title "الجذاذة النموذجية $TAG" \
-            --notes "نسخة جديدة. نزّل ملف jadhadha-pro.apk وثبّته على الهاتف."
+            --notes "نسخة جديدة. نزّل ملف jadhadha-pro.apk وثبّته على الهاتف. ملاحظة: تم تدوير مفتاح التوقيع؛ إن كانت نسخة قديمة مثبّتة فاحذفها قبل التثبيت."
