@@ -91,6 +91,7 @@ private const val DOCX_MIME =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 private const val ROOT_NAME = "جذاذات الثالثة إعدادي"
+private const val GEMINI_KEY_URL = "https://aistudio.google.com/app/apikey"
 private val COMP_FOLDERS = listOf("القراءة", "الدرس اللغوي", "التعبير والإنشاء")
 private val UNIT_FOLDERS = listOf("الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة")
     .map { "الوحدة $it" }
@@ -1080,6 +1081,7 @@ private fun SettingsWindow(
     onToggleAi: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
+    var showKeyHelp by remember { mutableStateOf(false) }
     SubWindow("الإعدادات", onClose, fullHeight = true) {
         SoftCard {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -1090,12 +1092,19 @@ private fun SettingsWindow(
         }
         HeaderCard(teacher, school, level, onHeader)
         StorageCard(treeUri, storageMsg, onPickStorage)
-        SettingsCard(apiKey, aiOn, onChangeKey, onToggleAi)
+        SettingsCard(apiKey, aiOn, onChangeKey, onToggleAi, onShowKeyHelp = { showKeyHelp = true })
     }
+    if (showKeyHelp) KeyHelpWindow(onClose = { showKeyHelp = false })
 }
 
 @Composable
-private fun SettingsCard(apiKey: String, aiOn: Boolean, onChange: (String) -> Unit, onToggle: (Boolean) -> Unit) {
+private fun SettingsCard(
+    apiKey: String,
+    aiOn: Boolean,
+    onChange: (String) -> Unit,
+    onToggle: (Boolean) -> Unit,
+    onShowKeyHelp: () -> Unit,
+) {
     SoftCard {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text("الذكاء الاصطناعي", fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 18.sp,
@@ -1123,6 +1132,57 @@ private fun SettingsCard(apiKey: String, aiOn: Boolean, onChange: (String) -> Un
             visualTransformation = PasswordVisualTransformation(),
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedButton(
+            onClick = onShowKeyHelp,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("كيف أحصل على المفتاح؟", fontWeight = FontWeight.Bold, color = Emerald)
+        }
+    }
+}
+
+/** نافذة شرح خطوات الحصول على مفتاح Gemini، مع زر يفتح صفحة Google AI Studio. */
+@Composable
+private fun KeyHelpWindow(onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    SubWindow("كيف أحصل على مفتاح Gemini؟", onClose, fullHeight = false) {
+        Text(
+            "الذكاء الاصطناعي اختياري: بدون مفتاح يعمل التفريغ كاملًا ودون إنترنت. وإن رغبت في تعبئة الخانات الفارغة آليًا فاتبع الخطوات:",
+            fontSize = 13.sp,
+            color = Muted,
+            lineHeight = 20.sp,
+        )
+        StepTitle("١", "افتح صفحة Google AI Studio")
+        Text(
+            "اضغط الزر بالأسفل، وسجّل الدخول بحساب Google العادي (نفس حساب Gmail).",
+            fontSize = 13.sp, color = Muted, lineHeight = 20.sp,
+        )
+        StepTitle("٢", "أنشئ المفتاح")
+        Text(
+            "اضغط «Create API key»، واختر مشروعًا إن طُلب منك أو أنشئ مشروعًا جديدًا.",
+            fontSize = 13.sp, color = Muted, lineHeight = 20.sp,
+        )
+        StepTitle("٣", "انسخ المفتاح")
+        Text(
+            "سيظهر مفتاح يبدأ بـ «AIza…» — انسخه.",
+            fontSize = 13.sp, color = Muted, lineHeight = 20.sp,
+        )
+        StepTitle("٤", "ألصقه في التطبيق")
+        Text(
+            "ارجع إلى الإعدادات، ألصقه في خانة «المفتاح»، فيُحفظ داخل الجهاز ولا يُرسل إلى أي جهة غير Google.",
+            fontSize = 13.sp, color = Muted, lineHeight = 20.sp,
+        )
+        Text(
+            "المفتاح شخصي: لا تشاركه مع أحد. الحدّ المجاني في Google يكفي الاستعمال العادي.",
+            fontSize = 12.sp, color = Muted, lineHeight = 18.sp,
+        )
+        SolidButton(
+            "افتح صفحة المفتاح في المتصفح",
+            Emerald,
+            { openUrl(ctx, GEMINI_KEY_URL) },
+            Modifier.fillMaxWidth(),
         )
     }
 }
@@ -1215,6 +1275,14 @@ private fun runBridge(
         .callAttr("run", comp, model.absolutePath, sourcePath, outDir.absolutePath, apiKey, outName, headerJson, style)
         .toString()
     return JSONObject(json)
+}
+
+private fun openUrl(ctx: Context, url: String) {
+    try {
+        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (e: Exception) {
+        Toast.makeText(ctx, "تعذّر فتح المتصفح: ${e.message}", Toast.LENGTH_LONG).show()
+    }
 }
 
 private fun openOrShare(ctx: Context, path: String, view: Boolean) {
