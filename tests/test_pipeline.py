@@ -174,5 +174,30 @@ class StylesTests(unittest.TestCase):
                 styles.apply_style(str(src), "no_such_style")
 
 
+class RestyleTests(unittest.TestCase):
+    def test_restyle_reuses_saved_content_without_source_or_key(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            src = make_source(td / "reading.docx", "reading", generate.STAGES["reading"])
+            first = json.loads(bridge.run("reading", str(MODELS / "reading.docx"), str(src),
+                                          str(td / "out"), out_name="جذاذة.docx", style="emerald"))
+            self.assertTrue(first["ok"], first)
+            base = Path(first["base"])
+            self.assertTrue(base.exists(), first)
+            base_bytes = base.read_bytes()
+            # إعادة النمط على المسار نفسه، بلا مصدر ولا مفتاح (لا استدعاء للذكاء الاصطناعي)
+            second = json.loads(bridge.restyle(str(base), first["path"], style="royal"))
+            self.assertTrue(second["ok"], second)
+            self.assertTrue(Path(second["path"]).exists())
+            # النسخة الأساسية لم تُمسّ، والمحتوى محفوظ
+            self.assertEqual(base.read_bytes(), base_bytes)
+            self.assertIn("قدرة 1", all_text(Path(second["path"])))
+
+    def test_restyle_missing_base_fails_cleanly(self):
+        r = json.loads(bridge.restyle("/no/such/base.docx", "/tmp/whatever.docx", style="modern"))
+        self.assertFalse(r["ok"])
+        self.assertTrue(r["error"])
+
+
 if __name__ == "__main__":
     unittest.main()

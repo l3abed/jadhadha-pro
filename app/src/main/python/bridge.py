@@ -14,6 +14,7 @@ import io
 import json
 import os
 import re
+import shutil
 import sys
 import traceback
 from pathlib import Path
@@ -226,9 +227,39 @@ def apply_header_json(docx_path, overrides_json):
         return 0
 
 
+_BASE_PREFIX = "_base_"
+
+
+def _save_base(path):
+    """يحفظ نسخة أساسية (بلا ترويسة ولا نمط) بجانب الملف الناتج لإعادة الأنماط لاحقاً."""
+    p = Path(path)
+    base = p.with_name(_BASE_PREFIX + p.name)
+    try:
+        shutil.copyfile(p, base)
+        return str(base)
+    except OSError:
+        return ""
+
+
+def _apply_header_and_style(path, header_json, style):
+    """يطبّق ترويسة الإعدادات ثم النمط على الملف. يعيد تحذيراً نصياً إن فشل النمط."""
+    try:
+        ov = json.loads(header_json) if header_json else {}
+    except ValueError:
+        ov = {}
+    apply_header(path, ov)
+    try:
+        import styles as _styles
+        _styles.apply_style(path, style)
+    except Exception as e:                      # النمط تحسين شكلي: لا يُفشل التفريغ
+        return "\n⚠ تعذّر تطبيق النمط: %s" % e
+    return ""
+
+
 def run(component, model, source, out_dir, api_key="", out_name="", header_json="", style="classic"):
-    res = {"ok": False, "path": "", "log": "", "error": "", "target": {}}
+    res = {"ok": False, "path": "", "base": "", "log": "", "error": "", "target": {}}
     buf = io.StringIO()
+    warn = ""
     try:
         if component not in COMPONENTS:
             raise ValueError("مكوّن غير معروف: %s" % component)
@@ -246,23 +277,43 @@ def run(component, model, source, out_dir, api_key="", out_name="", header_json=
             res["error"] = ("لم يطبع السكريبت مسار الملف الناتج؛ أُلغي التفريغ بدل اختيار ملف قديم."
                             if not res["path"] else "الملف الناتج غير موجود: " + res["path"])
         else:
-            try:
-                ov = json.loads(header_json) if header_json else {}
-            except ValueError:
-                ov = {}
-            apply_header(res["path"], ov)
-            try:
-                import styles as _styles
-                _styles.apply_style(res["path"], style)
-            except Exception as _e:                      # النمط تحسين شكلي: لا يُفشل التفريغ
-                res["log"] += f"\n⚠ تعذّر تطبيق النمط: {_e}"
+            res["base"] = _save_base(res["path"])
+            warn = _apply_header_and_style(res["path"], header_json, style)
             res["target"] = detect_target(res["path"], component)
     except SystemExit as e:                      # ShapeError في سكريبت القراءة يرث SystemExit
         res["error"] = str(e) or "تخطيط المصدر غير مدعوم."
     except Exception as e:
         res["error"] = "%s: %s" % (type(e).__name__, e)
         buf.write(traceback.format_exc())
-    res["log"] = buf.getvalue()
+    res["log"] = buf.getvalue() + warn
+    return json.dumps(res, ensure_ascii=False)
+
+
+def restyle(base_path, out_path, header_json="", style="classic"):
+    """يعيد بناء الجذاذة من النسخة الأساسية المخزّنة بنمط آخر، دون إعادة التفريغ أو استهلاك المفتاح.
+
+    base_path: النسخة الأساسية المحفوظة (بلا نمط) من التفريغ السابق.
+    out_path : مسار الملف الناتج المطلوب (يُستبدل بمحتوى النسخة الأساسية ثم يُنمَّط).
+    """
+    res = {"ok": False, "path": "", "base": "", "log": "", "error": "", "target": {}}
+    buf = io.StringIO()
+    warn = ""
+    try:
+        base = Path(base_path)
+        if not base.exists():
+            raise FileNotFoundError("لا توجد نسخة أساسية محفوظة لهذه الجذاذة.")
+        out = Path(out_path) if out_path else base.with_name(base.name.replace(_BASE_PREFIX, "", 1))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(base, out)
+        warn = _apply_header_and_style(out, header_json, style)
+        res["path"] = str(out)
+        res["base"] = str(base)
+        res["ok"] = out.exists()
+        res["target"] = detect_target(out)
+    except Exception as e:
+        res["error"] = "%s: %s" % (type(e).__name__, e)
+        buf.write(traceback.format_exc())
+    res["log"] = buf.getvalue() + warn
     return json.dumps(res, ensure_ascii=False)
 
 
@@ -271,14 +322,14 @@ def run(component, model, source, out_dir, api_key="", out_name="", header_json=
 def generate_lesson(component, lesson, subject, level, activity, api_key, out_dir, model_path, style="classic", header_json=""):
     """يولّد جذاذة بالذكاء الاصطناعي ثم يفرّغها في القالب المختار. يعيد JSON مثل run()."""
     import generate as G
-    res = {"ok": False, "path": "", "log": "", "error": "", "target": {}}
+    res = {"ok": False, "path": "", "base": "", "log": "", "error": "", "target": {}}
     buf = io.StringIO()
     try:
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             src = G.generate(component, lesson, subject, level, activity, api_key, Path(out_dir) / "_مصدر")
             out = run(component, model_path, str(src), out_dir, "", "", header_json, style)   # الجذاذة مكتملة: لا تنقيح ثانٍ
         r = json.loads(out)
-        res.update({"ok": r["ok"], "path": r["path"], "target": r["target"], "error": r["error"]})
+        res.update({"ok": r["ok"], "path": r["path"], "base": r.get("base", ""), "target": r["target"], "error": r["error"]})
     except G.GenerationError as e:
         res["error"] = str(e)
     except Exception as e:
@@ -301,7 +352,7 @@ def transcribe_text(component, text, activity, api_key, out_dir, model_path, sty
     """يحوّل النص الملصوق أو المجلوب من الرابط إلى مصدر، ثم يفرّغه في القالب (بلا تنقيح ثانٍ)."""
     import generate as G
     import linkimport as K
-    res = {"ok": False, "path": "", "log": "", "error": "", "target": {}}
+    res = {"ok": False, "path": "", "base": "", "log": "", "error": "", "target": {}}
     buf = io.StringIO()
     try:
         body = K.text_from_paste(text)
@@ -309,7 +360,7 @@ def transcribe_text(component, text, activity, api_key, out_dir, model_path, sty
             src = G.structure_text(component, body, activity, api_key, Path(out_dir) / "_مصدر")
             out = run(component, model_path, str(src), out_dir, "", "", header_json, style)
         r = json.loads(out)
-        res.update({"ok": r["ok"], "path": r["path"], "target": r["target"], "error": r["error"]})
+        res.update({"ok": r["ok"], "path": r["path"], "base": r.get("base", ""), "target": r["target"], "error": r["error"]})
     except (G.GenerationError, K.LinkError) as e:
         res["error"] = str(e)
     except Exception as e:

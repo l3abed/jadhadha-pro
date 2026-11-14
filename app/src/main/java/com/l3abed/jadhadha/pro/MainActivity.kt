@@ -153,6 +153,8 @@ private data class TabState(
     val message: String = "",
     val ok: Boolean = false,
     val outPath: String = "",
+    val basePath: String = "",          // نسخة أساسية بلا نمط لإعادة الأنماط دون إعادة التفريغ
+    val unitChoice: String = "",        // الوحدة المختارة يدوياً عند غيابها في الترويسة
     val log: String = "",
     val folderComp: String = "",
     val folderUnit: String = "",
@@ -170,6 +172,8 @@ private fun TabState.toJson(): String = JSONObject().apply {
     put("message", message)
     put("ok", ok)
     put("outPath", outPath)
+    put("basePath", basePath)
+    put("unitChoice", unitChoice)
     put("log", log)
     put("folderComp", folderComp)
     put("folderUnit", folderUnit)
@@ -192,6 +196,8 @@ private fun tabStateFromJson(raw: String?): TabState {
             message = j.optString("message"),
             ok = j.optBoolean("ok"),
             outPath = j.optString("outPath"),
+            basePath = j.optString("basePath"),
+            unitChoice = j.optString("unitChoice"),
             log = j.optString("log"),
             folderComp = j.optString("folderComp"),
             folderUnit = j.optString("folderUnit"),
@@ -323,7 +329,7 @@ private fun JadhadhaApp() {
                         .callAttr("apply_header_json", st.outPath, JSONObject().put("unit", unit).toString())
                 }
             }
-            update(id) { it.copy(folderUnit = "الوحدة $unit") }
+            update(id) { it.copy(folderUnit = "الوحدة $unit", unitChoice = unit) }
         }
     }
 
@@ -376,7 +382,7 @@ private fun JadhadhaApp() {
                 if (j.optBoolean("ok")) {
                     update(id) {
                         it.copy(
-                            ok = true, outPath = j.optString("path"), message = "",
+                            ok = true, outPath = j.optString("path"), basePath = j.optString("base"), message = "",
                             folderComp = j.optJSONObject("target")?.optString("component") ?: "",
                             folderUnit = j.optJSONObject("target")?.optString("unit") ?: "",
                             importMsg = "فُرِّغ النص في القالب ✔",
@@ -428,6 +434,7 @@ private fun JadhadhaApp() {
                         busy = false,
                         ok = ok,
                         outPath = j.optString("path"),
+                        basePath = j.optString("base"),
                         message = if (ok) "تمّ إنجاز الجذاذة ✔" else "تعذّر التفريغ: " + j.optString("error"),
                         log = j.optString("log"),
                         folderComp = j.optJSONObject("target")?.optString("component") ?: "",
@@ -438,6 +445,42 @@ private fun JadhadhaApp() {
             res.onFailure { e ->
                 update(id) { it.copy(busy = false, ok = false, message = "خطأ: ${e.message}") }
             }
+        }
+    }
+
+    /** يغيّر نمط الجذاذة من النسخة الأساسية المحفوظة، بلا إعادة تفريغ ولا استهلاك للمفتاح. */
+    fun restyleCurrent(id: String, style: String) {
+        val cur = states[id] ?: return
+        val base = cur.basePath
+        if (cur.busy || base.isEmpty() || !File(base).exists()) return
+        update(id) { it.copy(message = "جارٍ تطبيق النمط على الجذاذة المحفوظة…") }
+        scope.launch {
+            val res = withContext(Dispatchers.IO) {
+                runCatching {
+                    Python.getInstance().getModule("bridge").callAttr(
+                        "restyle", base, cur.outPath, headerJson(hTeacher, hSchool, hLevel, cur.unitChoice), style,
+                    ).toString()
+                }
+            }
+            res.onSuccess { raw ->
+                val j = JSONObject(raw)
+                if (j.optBoolean("ok")) {
+                    update(id) {
+                        it.copy(
+                            ok = true,
+                            outPath = j.optString("path"),
+                            basePath = j.optString("base").ifEmpty { base },
+                            message = "تمّ تغيير النمط من النسخة المحفوظة دون إعادة التفريغ ✔",
+                            folderComp = j.optJSONObject("target")?.optString("component")?.takeIf { s -> s.isNotEmpty() } ?: it.folderComp,
+                            folderUnit = j.optJSONObject("target")?.optString("unit")?.takeIf { s -> s.isNotEmpty() } ?: it.folderUnit,
+                            log = j.optString("log"),
+                        )
+                    }
+                } else {
+                    update(id) { it.copy(message = "تعذّر تطبيق النمط: " + j.optString("error")) }
+                }
+            }
+            res.onFailure { e -> update(id) { it.copy(message = "خطأ: ${e.message}") } }
         }
     }
 
@@ -660,6 +703,7 @@ private fun JadhadhaApp() {
             onPick = { k ->
                 styleKey = k
                 prefs.edit().putString("style", k).apply()
+                restyleCurrent(comp.id, k)
             },
             onClose = { showStyleDialog = false },
         )
@@ -851,6 +895,12 @@ private fun SubWindow(
 @Composable
 private fun StyleWindow(selected: String, onPick: (String) -> Unit, onClose: () -> Unit) {
     SubWindow("اختر النمط", onClose, fullHeight = false) {
+        Text(
+            "تغيير النمط لا يعيد التفريغ ولا يستهلك مفتاح الذكاء الاصطناعي: يُنقل المحتوى المحفوظ إلى القالب الجديد.",
+            fontSize = 13.sp,
+            color = Muted,
+            lineHeight = 20.sp,
+        )
         StylePicker(selected) { key ->
             onPick(key)
             onClose()
@@ -1124,8 +1174,13 @@ private fun ensureModel(ctx: Context, comp: String): File {
     return dest
 }
 
-private fun headerJson(teacher: String, school: String, level: String): String =
-    JSONObject().put("teacher", teacher.trim()).put("school", school.trim()).put("level", level.trim()).toString()
+private fun headerJson(teacher: String, school: String, level: String, unit: String = ""): String =
+    JSONObject()
+        .put("teacher", teacher.trim())
+        .put("school", school.trim())
+        .put("level", level.trim())
+        .apply { if (unit.isNotBlank()) put("unit", unit) }
+        .toString()
 
 private fun runBridge(
     ctx: Context,
