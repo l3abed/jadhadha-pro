@@ -1425,7 +1425,7 @@ def call_gemini(prompt: str, cfg: Settings, required: str = "rows") -> dict:
     body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
                        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.2}}
                       ).encode("utf-8")
-    headers = {"Content-Type": "application/json", "x-goog-api-key": cfg.api_key}
+    headers = aiconfig.headers(cfg.api_key)
     last = ""
     for attempt in range(1, cfg.ai_retries + 1):
         wait = None

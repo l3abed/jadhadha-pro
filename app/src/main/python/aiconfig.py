@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 
 DEFAULT_BASE = "https://generativelanguage.googleapis.com"
+USER_AGENT = "JadhadhaApp/2.0"
 
 
 def base_url() -> str:
@@ -24,3 +25,11 @@ def via_proxy() -> bool:
 
 def endpoint(model: str, method: str = "generateContent") -> str:
     return f"{base_url()}/v1beta/models/{model}:{method}"
+
+
+def headers(api_key: str = "") -> dict:
+    """ترويسات الطلب. نرسل User-Agent خاصاً لأن بعض الجدران (Cloudflare) تحجب بصمة urllib الافتراضية."""
+    h = {"Content-Type": "application/json", "User-Agent": USER_AGENT}
+    if api_key:
+        h["x-goog-api-key"] = api_key
+    return h

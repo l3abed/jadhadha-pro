@@ -95,8 +95,8 @@ private const val GEMINI_KEY_URL = "https://aistudio.google.com/app/apikey"
 
 // وسيط الذكاء الاصطناعي (Cloudflare Worker) يحمل مفتاح Gemini سرًّا، فلا يحتاج المستخدم مفتاحًا.
 // يُضبط العنوان والرمز بعد نشر العامل. إن كان الحقلان فارغين عاد التطبيق إلى مفتاح المستخدم/دون ذكاء.
-private const val AI_PROXY_BASE = ""
-private const val AI_PROXY_TOKEN = ""
+private const val AI_PROXY_BASE = "https://jadhadha-ai.jadhadha.workers.dev"
+private const val AI_PROXY_TOKEN = "74564bc8fb8d17b4179052999fed094395263d679e500b91"
 private val COMP_FOLDERS = listOf("القراءة", "الدرس اللغوي", "التعبير والإنشاء")
 private val UNIT_FOLDERS = listOf("الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة")
     .map { "الوحدة $it" }

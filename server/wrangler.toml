@@ -12,4 +12,4 @@ IP_DAILY_LIMIT = "300"
 # ثم ضع المعرّف الناتج مكان <KV_ID>.
 [[kv_namespaces]]
 binding = "RATE_KV"
-id = "<KV_ID>"
+id = "ee8c13a74dd749a386b2e20e0dc8e636"
