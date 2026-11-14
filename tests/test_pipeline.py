@@ -19,6 +19,7 @@ import generate
 import language
 import linkimport
 import reading_general
+import styles
 
 ROOT = Path(__file__).resolve().parents[1]
 PY = ROOT / "app" / "src" / "main" / "python"
@@ -149,6 +150,28 @@ class LinkImportTests(unittest.TestCase):
         self.assertIn("<source_text>", prompt)
         self.assertIn("</source_text>", prompt)
         self.assertIn("بيانات تحضير فقط", prompt)
+
+
+class StylesTests(unittest.TestCase):
+    def test_every_style_applies_without_error(self):
+        keys = list(styles.load_styles().keys())
+        self.assertGreaterEqual(len(keys), 10)
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            src = make_source(td / "reading.docx", "reading", generate.STAGES["reading"])
+            for key in keys:
+                out = json.loads(bridge.run("reading", str(MODELS / "reading.docx"), str(src),
+                                            str(td / "out"), out_name=f"{key}.docx", style=key))
+                self.assertTrue(out["ok"], (key, out))
+                self.assertNotIn("تعذّر تطبيق النمط", out["log"])
+
+    def test_classic_is_noop_and_unknown_style_raises(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            src = make_source(td / "reading.docx", "reading", generate.STAGES["reading"])
+            self.assertFalse(styles.apply_style(str(src), "classic"))
+            with self.assertRaises(ValueError):
+                styles.apply_style(str(src), "no_such_style")
 
 
 if __name__ == "__main__":

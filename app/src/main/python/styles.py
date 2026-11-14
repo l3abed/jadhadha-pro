@@ -15,7 +15,20 @@ _HERE = Path(__file__).resolve().parent
 _WHITE = {"ffffff", "auto", ""}
 
 
-STYLES = {'classic': {'label': 'الأصلي', 'note': 'بلا تغيير: يبقى تنسيق القالب كما هو'}, 'emerald': {'label': 'زمردي ملوّن', 'header_fill': '1B5E20', 'header_text': 'FFFFFF', 'zebra_fill': 'F3F8F1', 'border': '1B5E20', 'text': '1E2A22', 'font': None}, 'modern': {'label': 'عصري', 'header_fill': '2E4A7D', 'header_text': 'FFFFFF', 'zebra_fill': 'EEF3FA', 'border': '8FA3C7', 'text': '1B1F2A', 'font': 'Arial'}, 'print_bw': {'label': 'أبيض وأسود (للطباعة)', 'header_fill': None, 'header_text': '000000', 'zebra_fill': None, 'border': '000000', 'text': '000000', 'font': None, 'bold_header': True}}
+STYLES = {
+    # — الأنماط الأصلية —
+    'classic': {'label': 'الأصلي', 'note': 'بلا تغيير: يبقى تنسيق القالب كما هو'},
+    'emerald': {'label': 'زمردي ملوّن', 'header_fill': '1B5E20', 'header_text': 'FFFFFF', 'zebra_fill': 'F3F8F1', 'border': '1B5E20', 'text': '1E2A22', 'font': None},
+    'modern': {'label': 'عصري', 'header_fill': '2E4A7D', 'header_text': 'FFFFFF', 'zebra_fill': 'EEF3FA', 'border': '8FA3C7', 'text': '1B1F2A', 'font': 'Arial'},
+    'print_bw': {'label': 'أبيض وأسود (للطباعة)', 'header_fill': None, 'header_text': '000000', 'zebra_fill': None, 'border': '000000', 'text': '000000', 'font': None, 'bold_header': True},
+    # — أنماط إضافية —
+    'royal': {'label': 'بنفسجي ملكي', 'header_fill': '4A148C', 'header_text': 'FFFFFF', 'zebra_fill': 'F3E9FB', 'border': '7E57C2', 'text': '241238', 'font': None},
+    'sunset': {'label': 'برتقالي دافئ', 'header_fill': 'E65100', 'header_text': 'FFFFFF', 'zebra_fill': 'FFF3E0', 'border': 'FB8C00', 'text': '3E2723', 'font': None},
+    'ocean': {'label': 'أزرق محيطي', 'header_fill': '00695C', 'header_text': 'FFFFFF', 'zebra_fill': 'E0F2F1', 'border': '26A69A', 'text': '00251A', 'font': None},
+    'rose': {'label': 'وردي', 'header_fill': 'AD1457', 'header_text': 'FFFFFF', 'zebra_fill': 'FCE4EC', 'border': 'F06292', 'text': '3E0021', 'font': None},
+    'slate': {'label': 'رمادي أنيق', 'header_fill': '37474F', 'header_text': 'FFFFFF', 'zebra_fill': 'ECEFF1', 'border': '90A4AE', 'text': '1C262B', 'font': 'Calibri'},
+    'sepia': {'label': 'بني كلاسيكي', 'header_fill': '5D4037', 'header_text': 'FFFFFF', 'zebra_fill': 'EFEBE9', 'border': '8D6E63', 'text': '2E1B14', 'font': None},
+}
 
 
 def load_styles() -> dict:

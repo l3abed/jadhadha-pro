@@ -22,9 +22,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -73,6 +75,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import com.chaquo.python.Python
@@ -251,6 +255,7 @@ private fun JadhadhaApp() {
     var styleKey by remember { mutableStateOf(prefs.getString("style", "classic") ?: "classic") }
     var aiEnabled by remember { mutableStateOf(prefs.getBoolean("ai_on", true)) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showStyleDialog by rememberSaveable { mutableStateOf(false) }
     var showLog by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var pendingComp by rememberSaveable { mutableStateOf(COMPS[0].id) }
@@ -440,7 +445,7 @@ private fun JadhadhaApp() {
     val st = states[comp.id] ?: TabState()
 
     Column(Modifier.fillMaxSize()) {
-        Hero(showSettings) { showSettings = !showSettings }
+        Hero(showSettings) { showSettings = true }
 
         Column(
             Modifier
@@ -451,33 +456,6 @@ private fun JadhadhaApp() {
                 .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            if (showSettings) {
-                SoftCard {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Text("الوضع الليلي", fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp, modifier = Modifier.weight(1f))
-                        Switch(checked = DarkMode.value, onCheckedChange = { on ->
-                            DarkMode.value = on
-                            prefs.edit().putBoolean("dark", on).apply()
-                        })
-                    }
-                }
-                HeaderCard(hTeacher, hSchool, hLevel) { t, sc, lv ->
-                hTeacher = t
-                hSchool = sc
-                hLevel = lv
-                prefs.edit().putString("h_teacher", t).putString("h_school", sc).putString("h_level", lv).apply()
-            }
-            StorageCard(treeUri, storageMsg) { treePicker.launch(null) }
-                SettingsCard(apiKey, aiEnabled, { v ->
-                    apiKey = v
-                    SecureStore.save(ctx, v)
-                }, { on ->
-                    aiEnabled = on
-                    prefs.edit().putBoolean("ai_on", on).apply()
-                })
-            }
-
             ComponentSelector(tab) { tab = it }
 
             SoftCard {
@@ -501,9 +479,15 @@ private fun JadhadhaApp() {
                 }
 
                 StepTitle("٢", "اختر النمط")
-                StylePicker(styleKey) { k ->
-                    styleKey = k
-                    prefs.edit().putString("style", k).apply()
+                OutlinedButton(
+                    onClick = { showStyleDialog = true },
+                    enabled = !st.busy,
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.5.dp, Emerald),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Emerald),
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                ) {
+                    Text("النمط: " + styleLabel(styleKey), fontWeight = FontWeight.Bold)
                 }
                 StepTitle("٣", "فرّغها في القالب النموذجي")
                 SolidButton(
@@ -636,6 +620,50 @@ private fun JadhadhaApp() {
             )
         }
     }
+
+    if (showSettings) {
+        SettingsWindow(
+            dark = DarkMode.value,
+            onDark = { on ->
+                DarkMode.value = on
+                prefs.edit().putBoolean("dark", on).apply()
+            },
+            teacher = hTeacher,
+            school = hSchool,
+            level = hLevel,
+            onHeader = { t, sc, lv ->
+                hTeacher = t
+                hSchool = sc
+                hLevel = lv
+                prefs.edit().putString("h_teacher", t).putString("h_school", sc).putString("h_level", lv).apply()
+            },
+            treeUri = treeUri,
+            storageMsg = storageMsg,
+            onPickStorage = { treePicker.launch(null) },
+            apiKey = apiKey,
+            aiOn = aiEnabled,
+            onChangeKey = { v ->
+                apiKey = v
+                SecureStore.save(ctx, v)
+            },
+            onToggleAi = { on ->
+                aiEnabled = on
+                prefs.edit().putBoolean("ai_on", on).apply()
+            },
+            onClose = { showSettings = false },
+        )
+    }
+
+    if (showStyleDialog) {
+        StyleWindow(
+            selected = styleKey,
+            onPick = { k ->
+                styleKey = k
+                prefs.edit().putString("style", k).apply()
+            },
+            onClose = { showStyleDialog = false },
+        )
+    }
 }
 
 @Composable
@@ -725,7 +753,17 @@ private val STYLE_CHOICES = listOf(
     "emerald" to "زمردي ملوّن",
     "modern" to "عصري",
     "print_bw" to "أبيض وأسود",
+    "royal" to "بنفسجي ملكي",
+    "sunset" to "برتقالي دافئ",
+    "ocean" to "أزرق محيطي",
+    "rose" to "وردي",
+    "slate" to "رمادي أنيق",
+    "sepia" to "بني كلاسيكي",
 )
+
+/** يعيد التسمية العربية للنمط المختار، أو التسمية الأولى عند عدم العثور عليه. */
+private fun styleLabel(key: String): String =
+    STYLE_CHOICES.firstOrNull { it.first == key }?.second ?: STYLE_CHOICES.first().second
 
 @Composable
 private fun StylePicker(selected: String, onPick: (String) -> Unit) {
@@ -741,7 +779,7 @@ private fun StylePicker(selected: String, onPick: (String) -> Unit) {
                             .background(if (on) Emerald else CardBg)
                             .border(1.dp, if (on) Emerald else Line, RoundedCornerShape(12.dp))
                             .clickable { onPick(key) }
-                            .padding(vertical = 10.dp),
+                            .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(label, color = if (on) Color.White else Ink, fontSize = 13.sp,
@@ -749,6 +787,73 @@ private fun StylePicker(selected: String, onPick: (String) -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * نافذة فرعية موحّدة. حين تكون [fullHeight] صحيحة تمتدّ لمعظم الشاشة مع تمرير داخلي (للإعدادات)،
+ * وإلا فتلتفّ حول محتواها بحدّ أقصى للارتفاع (لاختيار النمط).
+ */
+@Composable
+private fun SubWindow(
+    title: String,
+    onClose: () -> Unit,
+    fullHeight: Boolean,
+    content: @Composable () -> Unit,
+) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .then(
+                    if (fullHeight) Modifier.fillMaxHeight(0.92f)
+                    else Modifier.heightIn(max = 560.dp)
+                ),
+            shape = RoundedCornerShape(24.dp),
+            color = Paper,
+            shadowElevation = 8.dp,
+        ) {
+            Column(
+                modifier = if (fullHeight) Modifier.fillMaxSize().padding(18.dp)
+                else Modifier.fillMaxWidth().padding(18.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        title,
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Ink,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onClose) {
+                        Text("إغلاق", color = Emerald, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                if (fullHeight) {
+                    Column(
+                        Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) { content() }
+                } else {
+                    Column(
+                        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) { content() }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StyleWindow(selected: String, onPick: (String) -> Unit, onClose: () -> Unit) {
+    SubWindow("اختر النمط", onClose, fullHeight = false) {
+        StylePicker(selected) { key ->
+            onPick(key)
+            onClose()
         }
     }
 }
@@ -889,6 +994,37 @@ private fun StorageCard(treeUri: String?, message: String, onPick: () -> Unit) {
                 fontWeight = FontWeight.Bold,
             )
         }
+    }
+}
+
+@Composable
+private fun SettingsWindow(
+    dark: Boolean,
+    onDark: (Boolean) -> Unit,
+    teacher: String,
+    school: String,
+    level: String,
+    onHeader: (String, String, String) -> Unit,
+    treeUri: String?,
+    storageMsg: String,
+    onPickStorage: () -> Unit,
+    apiKey: String,
+    aiOn: Boolean,
+    onChangeKey: (String) -> Unit,
+    onToggleAi: (Boolean) -> Unit,
+    onClose: () -> Unit,
+) {
+    SubWindow("الإعدادات", onClose, fullHeight = true) {
+        SoftCard {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("الوضع الليلي", fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp, modifier = Modifier.weight(1f))
+                Switch(checked = dark, onCheckedChange = onDark)
+            }
+        }
+        HeaderCard(teacher, school, level, onHeader)
+        StorageCard(treeUri, storageMsg, onPickStorage)
+        SettingsCard(apiKey, aiOn, onChangeKey, onToggleAi)
     }
 }
 
