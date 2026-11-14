@@ -1213,6 +1213,32 @@ def trim_trailing_breaks(body) -> None:
     kids = [e for e in body if e.tag != W + "sectPr"]
     while kids and kids[-1].tag == W + "p" and not p_text(kids[-1]).strip() and any(b.get(W + "type") == "page" for b in kids[-1].iter(W + "br")):
         body.remove(kids.pop())
+
+
+def make_page_break():
+    """فقرة تحوي فاصلة صفحة صريحة (w:br type=page)."""
+    p = OxmlElement("w:p")
+    r = OxmlElement("w:r")
+    r.append(el("w:br", type="page"))
+    p.append(r)
+    return p
+
+
+def _is_page_break_par(e) -> bool:
+    return (e.tag == W + "p" and not p_text(e).strip()
+            and any(b.get(W + "type") == "page" for b in e.iter(W + "br")))
+
+
+def ensure_session_pages(body, blocks) -> None:
+    """يبدأ كل نشاط (حصة) في صفحة مستقلة.
+
+    يحذف فواصل الصفحات القديمة الموروثة من النموذج، ثم يضع فاصلة صفحة قبل كل قسم
+    بعد الأول، فلا يشترك نشاطان في صفحة واحدة (قد يمتدّ النشاط الواحد صفحتين).
+    """
+    for e in [x for x in list(body) if _is_page_break_par(x)]:
+        body.remove(e)
+    for blk in blocks[1:]:
+        blk.header.addprevious(make_page_break())
         # ═════════════════════════ التشغيل والحفظ ═════════════════════════
 def find_file(name: str) -> Path:
     p = Path(name).expanduser()
@@ -1292,7 +1318,7 @@ def build(model_path: Path, source_path: Path, cfg: Settings, report: Report) ->
         report.info(f"الجذاذة نشاط واحد: {SESSION_LABELS[kind]}")
     ctx = Ctx(cfg, report, numbering, src.part, doc, model.nested_proto)
 
-    body, drop, first = doc.element.body, [], True
+    body, drop, first, kept = doc.element.body, [], True, []
     for i, blk in enumerate(model.blocks):
         srows = [r for r in (make_row(s, cfg) for s in sessions.get(blk.kind, [])) if r.stage or r.caps or r.acts or r.ev or r.content]
         if not srows:
@@ -1303,10 +1329,12 @@ def build(model_path: Path, source_path: Path, cfg: Settings, report: Report) ->
         if blk.kind in OBJECTIVE_SESSIONS: fill_objectives(blk, hdr, cfg, report, first)
         first = False
         fill_main(blk, srows, ctx)
+        kept.append(blk)
         report.info(f"حصة {SESSION_LABELS[blk.kind]}: {len(srows)} صفوف")
     fill_blank_labels(model.blocks)
     for blk, stop in drop: remove_block(body, blk, stop)
     if drop: trim_trailing_breaks(body)
+    ensure_session_pages(body, kept)
     extra = [k for k in sessions if sessions[k] and k not in {b.kind for b in model.blocks}]
     if extra: report.warn("حصص في المصدر بلا قسم مقابل في النموذج: " + "، ".join(SESSION_LABELS[k] for k in extra))
 

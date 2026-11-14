@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from docx import Document
+from docx.oxml.ns import qn
 
 import bridge
 import expression
@@ -134,6 +135,32 @@ class ExpressionTests(unittest.TestCase):
             text = all_text(Path(out["path"]))
             for stage in stages:
                 self.assertIn(stage, text)
+
+    def test_each_activity_starts_on_its_own_page(self):
+        # صفوف تُوزَّع على الحصص الأربع وفق قواعد التوزيع (تشخيص/فهم/إنجاز).
+        stages = ["تقويم تشخيصي", "اكتساب المهارة",
+                  "تقويم تشخيصي", "فهم المطلوب", "الإنجاز",
+                  "تقويم تشخيصي", "فهم المطلوب", "الإنجاز",
+                  "تقويم تشخيصي", "التصحيح"]
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            src = make_source(td / "expr.docx", "expression", stages, topic="السرد")
+            out = json.loads(bridge.run("expression", str(MODELS / "expression.docx"), str(src),
+                                        str(td / "out"), out_name="تعبير.docx"))
+            self.assertTrue(out["ok"], out)
+            for label in ("الاكتساب", "التطبيق", "الإنتاج", "التصحيح"):
+                self.assertIn(label, out["log"])
+            body = Document(out["path"]).element.body
+            breaks = [i for i, e in enumerate(body)
+                      if e.tag == qn("w:p")
+                      and not "".join(t.text or "" for t in e.iter(qn("w:t"))).strip()
+                      and any(b.get(qn("w:type")) == "page" for b in e.iter(qn("w:br")))]
+            # أربع حصص ⇒ ثلاث فواصل صفحات، كل واحدة تسبق ترويسة حصة.
+            self.assertEqual(len(breaks), 3, out["log"])
+            for i in breaks:
+                self.assertEqual(body[i + 1].tag, qn("w:tbl"))
+                head = "".join(t.text or "" for t in body[i + 1].findall(qn("w:tr"))[0].iter(qn("w:t")))
+                self.assertIn("الفئة المستهدفة", head)
 
 
 class LinkImportTests(unittest.TestCase):

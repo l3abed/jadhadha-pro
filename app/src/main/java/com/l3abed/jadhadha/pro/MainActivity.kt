@@ -262,6 +262,7 @@ private fun JadhadhaApp() {
     var aiEnabled by remember { mutableStateOf(prefs.getBoolean("ai_on", true)) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showStyleDialog by rememberSaveable { mutableStateOf(false) }
+    var headerDirty by remember { mutableStateOf(false) }
     var showLog by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var pendingComp by rememberSaveable { mutableStateOf(COMPS[0].id) }
@@ -449,7 +450,11 @@ private fun JadhadhaApp() {
     }
 
     /** يغيّر نمط الجذاذة من النسخة الأساسية المحفوظة، بلا إعادة تفريغ ولا استهلاك للمفتاح. */
-    fun restyleCurrent(id: String, style: String) {
+    fun restyleCurrent(
+        id: String,
+        style: String,
+        note: String = "تمّ تغيير النمط من النسخة المحفوظة دون إعادة التفريغ ✔",
+    ) {
         val cur = states[id] ?: return
         val base = cur.basePath
         if (cur.busy || base.isEmpty() || !File(base).exists()) return
@@ -470,7 +475,7 @@ private fun JadhadhaApp() {
                             ok = true,
                             outPath = j.optString("path"),
                             basePath = j.optString("base").ifEmpty { base },
-                            message = "تمّ تغيير النمط من النسخة المحفوظة دون إعادة التفريغ ✔",
+                            message = note,
                             folderComp = j.optJSONObject("target")?.optString("component")?.takeIf { s -> s.isNotEmpty() } ?: it.folderComp,
                             folderUnit = j.optJSONObject("target")?.optString("unit")?.takeIf { s -> s.isNotEmpty() } ?: it.folderUnit,
                             log = j.optString("log"),
@@ -675,6 +680,7 @@ private fun JadhadhaApp() {
             school = hSchool,
             level = hLevel,
             onHeader = { t, sc, lv ->
+                if (t != hTeacher || sc != hSchool || lv != hLevel) headerDirty = true
                 hTeacher = t
                 hSchool = sc
                 hLevel = lv
@@ -693,7 +699,17 @@ private fun JadhadhaApp() {
                 aiEnabled = on
                 prefs.edit().putBoolean("ai_on", on).apply()
             },
-            onClose = { showSettings = false },
+            onClose = {
+                showSettings = false
+                if (headerDirty) {
+                    headerDirty = false
+                    restyleCurrent(
+                        comp.id,
+                        styleKey,
+                        "تمّ تحديث الترويسة من النسخة المحفوظة دون إعادة التفريغ ✔",
+                    )
+                }
+            },
         )
     }
 
