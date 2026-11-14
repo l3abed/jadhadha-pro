@@ -700,7 +700,9 @@ def table_spec(tbl, numbering: SourceNumbering | None) -> dict:
     ncols = sum(c["span"] for c in rows[0]) if rows else 0
     if len(grid) != ncols or sum(grid) == 0:
         grid = [1] * ncols
-    return {"grid": grid, "rows": rows}
+    pr = tbl.find(W + "tblPr")
+    bidi = pr is not None and pr.find(W + "bidiVisual") is not None
+    return {"grid": grid, "rows": rows, "bidi": bidi}
 
 
 def make_table(proto, spec: dict, total: int, cfg: Settings):
@@ -714,7 +716,11 @@ def make_table(proto, spec: dict, total: int, cfg: Settings):
         for e in pr.findall(W + tag):
             pr.remove(e)
     put(pr, el("w:tblW", w=total, type="dxa"), TBLPR_ORDER)
-    put(pr, el("w:bidiVisual"), TBLPR_ORDER)
+    if spec.get("bidi"):                       # نحفظ اتجاه جدول المصدر فلا تُقلب أعمدته
+        put(pr, el("w:bidiVisual"), TBLPR_ORDER)
+    else:
+        for e in pr.findall(W + "bidiVisual"):
+            pr.remove(e)
 
 
     protos = proto.findall(W + "tr")
@@ -775,7 +781,7 @@ def copy_table_fallback(tbl, ctx: Ctx):
         for tag in ("tblpPr", "tblOverlap"):
             for e in pr.findall(W + tag):
                 pr.remove(e)
-            put(pr, el("w:bidiVisual"), TBLPR_ORDER)
+        # لا نفرض bidiVisual: نحفظ اتجاه جدول المصدر كما هو فلا تُقلب أعمدته
 
     for tc in new.iter(W + "tc"):
         for p in list(tc.findall(W + "p")):

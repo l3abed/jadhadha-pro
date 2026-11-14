@@ -513,7 +513,9 @@ def table_spec(tbl, numbering: SourceNumbering | None, cfg: Settings) -> dict:
         rows.append(row)
     ncols = sum(c["span"] for c in rows[0]) if rows else 0
     if len(grid) != ncols or sum(grid) == 0: grid = [1] * ncols
-    return {"grid": grid, "rows": rows}
+    pr = tbl.find(W + "tblPr")
+    bidi = pr is not None and pr.find(W + "bidiVisual") is not None
+    return {"grid": grid, "rows": rows, "bidi": bidi}
 
 def make_table(proto, spec: dict, total: int, cfg: Settings):
     tbl = copy.deepcopy(proto)
@@ -525,7 +527,10 @@ def make_table(proto, spec: dict, total: int, cfg: Settings):
         for e in pr.findall(W + tag): pr.remove(e)
     
     put(pr, el("w:tblW", w=total, type="dxa"), TBLPR_ORDER)
-    put(pr, el("w:bidiVisual"), TBLPR_ORDER) # فرض الاتجاه RTL
+    if spec.get("bidi"):                       # نحفظ اتجاه جدول المصدر فلا تُقلب أعمدته
+        put(pr, el("w:bidiVisual"), TBLPR_ORDER)
+    else:
+        for e in pr.findall(W + "bidiVisual"): pr.remove(e)
 
     protos = proto.findall(W + "tr")
     if not protos or not spec["rows"]: return tbl
@@ -575,7 +580,7 @@ def copy_table_fallback(tbl, ctx: Ctx):
     if pr is not None:
         for tag in ("tblpPr", "tblOverlap"):
             for e in pr.findall(W + tag): pr.remove(e)
-        put(pr, el("w:bidiVisual"), TBLPR_ORDER) # فرض الاتجاه RTL
+        # لا نفرض bidiVisual: نحفظ اتجاه جدول المصدر كما هو فلا تُقلب أعمدته
     for tc in list(new.iter(W + "tc")):
         for p in list(tc.findall(W + "p")):
             q = copy_paragraph(p, ctx)

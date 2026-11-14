@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from docx import Document
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 import bridge
@@ -116,6 +117,51 @@ class LanguageTests(unittest.TestCase):
                     self.assertEqual(language.resolve_api_key(language.Settings()), "test-key-123")
             finally:
                 os.chdir(old)
+
+
+def _nested_tables(doc):
+    """الجداول المتداخلة داخل خلايا الجدول الرئيسي (لا الجدول الرئيسي نفسه)."""
+    out = []
+    for m in doc.element.body.findall(qn("w:tbl")):
+        out += [t for t in m.iter(qn("w:tbl")) if t is not m]
+    return out
+
+
+def _has_bidi(tbl) -> bool:
+    pr = tbl.find(qn("w:tblPr"))
+    return pr is not None and pr.find(qn("w:bidiVisual")) is not None
+
+
+class TableDirectionTests(unittest.TestCase):
+    """الجدول الصغير داخل خانة المحتوى يحفظ اتجاه المصدر ولا يُقلب."""
+
+    def _run_language(self, td: Path, set_bidi: bool):
+        doc = Document(str(MODELS / "language.docx"))
+        for m in doc.element.body.findall(qn("w:tbl")):
+            for t in [x for x in m.iter(qn("w:tbl")) if x is not m]:
+                pr = t.find(qn("w:tblPr"))
+                if pr is None:
+                    continue
+                for bv in pr.findall(qn("w:bidiVisual")):
+                    pr.remove(bv)
+                if set_bidi:
+                    pr.append(OxmlElement("w:bidiVisual"))
+        src = td / f"src_{set_bidi}.docx"
+        doc.save(str(src))
+        out = json.loads(bridge.run("language", str(MODELS / "language.docx"), str(src),
+                                    str(td / "out"), out_name=f"l_{set_bidi}.docx"))
+        self.assertTrue(out["ok"], out)
+        return Document(out["path"])
+
+    def test_nested_table_follows_source_direction(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            for set_bidi in (False, True):
+                out = self._run_language(td, set_bidi)
+                nested = _nested_tables(out)
+                self.assertTrue(nested, "لا جداول متداخلة في الناتج")
+                for t in nested:
+                    self.assertEqual(_has_bidi(t), set_bidi)
 
 
 class ExpressionTests(unittest.TestCase):
