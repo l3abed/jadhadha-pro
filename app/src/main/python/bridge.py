@@ -28,19 +28,23 @@ _PATH_RE = re.compile(r"(?:الملف|تم الحفظ بنجاح في)\s*:\s*(.+
 
 
 @contextlib.contextmanager
-def _env_key(api_key):
-    old = os.environ.get("GEMINI_API_KEY")
-    if api_key:
-        os.environ["GEMINI_API_KEY"] = api_key
-    else:
-        os.environ.pop("GEMINI_API_KEY", None)
+def _env_ai(api_key, proxy_base=""):
+    """يضبط مفتاح Gemini وجذر الوسيط (إن وُجد) في البيئة خلال النداء، ثم يعيد الحالة."""
+    values = {"GEMINI_API_KEY": api_key or "", "JADHADHA_AI_BASE": proxy_base or ""}
+    old = {k: os.environ.get(k) for k in values}
+    for k, v in values.items():
+        if v:
+            os.environ[k] = v
+        else:
+            os.environ.pop(k, None)
     try:
         yield
     finally:
-        if old is None:
-            os.environ.pop("GEMINI_API_KEY", None)
-        else:
-            os.environ["GEMINI_API_KEY"] = old
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 _BAD_NAME = re.compile(r'[<>:"/\\|?*\r\n\t]+')
@@ -256,7 +260,7 @@ def _apply_header_and_style(path, header_json, style):
     return ""
 
 
-def run(component, model, source, out_dir, api_key="", out_name="", header_json="", style="classic"):
+def run(component, model, source, out_dir, api_key="", out_name="", header_json="", style="classic", proxy_base=""):
     res = {"ok": False, "path": "", "base": "", "log": "", "error": "", "target": {}}
     buf = io.StringIO()
     warn = ""
@@ -264,7 +268,7 @@ def run(component, model, source, out_dir, api_key="", out_name="", header_json=
         if component not in COMPONENTS:
             raise ValueError("مكوّن غير معروف: %s" % component)
         Path(out_dir).mkdir(parents=True, exist_ok=True)
-        with _env_key(api_key), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        with _env_ai(api_key, proxy_base), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             if component == "reading":
                 _run_reading(model, source, out_dir, api_key, out_name)
             else:
@@ -319,15 +323,15 @@ def restyle(base_path, out_path, header_json="", style="classic"):
 
 
 # ───────── واجهات الجولة الثانية: توليد الجذاذة، واستيراد نص التحضير ─────────
-def generate_lesson(component, lesson, subject, level, activity, api_key, out_dir, model_path, style="classic", header_json=""):
+def generate_lesson(component, lesson, subject, level, activity, api_key, out_dir, model_path, style="classic", header_json="", proxy_base=""):
     """يولّد جذاذة بالذكاء الاصطناعي ثم يفرّغها في القالب المختار. يعيد JSON مثل run()."""
     import generate as G
     res = {"ok": False, "path": "", "base": "", "log": "", "error": "", "target": {}}
     buf = io.StringIO()
     try:
-        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        with _env_ai(api_key, proxy_base), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             src = G.generate(component, lesson, subject, level, activity, api_key, Path(out_dir) / "_مصدر")
-            out = run(component, model_path, str(src), out_dir, "", "", header_json, style)   # الجذاذة مكتملة: لا تنقيح ثانٍ
+            out = run(component, model_path, str(src), out_dir, "", "", header_json, style, proxy_base)   # الجذاذة مكتملة: لا تنقيح ثانٍ
         r = json.loads(out)
         res.update({"ok": r["ok"], "path": r["path"], "base": r.get("base", ""), "target": r["target"], "error": r["error"]})
     except G.GenerationError as e:
@@ -348,7 +352,7 @@ def fetch_link(url):
         return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
 
 
-def transcribe_text(component, text, activity, api_key, out_dir, model_path, style="classic", header_json=""):
+def transcribe_text(component, text, activity, api_key, out_dir, model_path, style="classic", header_json="", proxy_base=""):
     """يحوّل النص الملصوق أو المجلوب من الرابط إلى مصدر، ثم يفرّغه في القالب (بلا تنقيح ثانٍ)."""
     import generate as G
     import linkimport as K
@@ -356,9 +360,9 @@ def transcribe_text(component, text, activity, api_key, out_dir, model_path, sty
     buf = io.StringIO()
     try:
         body = K.text_from_paste(text)
-        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        with _env_ai(api_key, proxy_base), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             src = G.structure_text(component, body, activity, api_key, Path(out_dir) / "_مصدر")
-            out = run(component, model_path, str(src), out_dir, "", "", header_json, style)
+            out = run(component, model_path, str(src), out_dir, "", "", header_json, style, proxy_base)
         r = json.loads(out)
         res.update({"ok": r["ok"], "path": r["path"], "base": r.get("base", ""), "target": r["target"], "error": r["error"]})
     except (G.GenerationError, K.LinkError) as e:

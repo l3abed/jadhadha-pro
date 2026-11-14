@@ -62,6 +62,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Twips
 
+import aiconfig
+
 # ════════════════════════════════ الإعدادات ════════════════════════════════
 DEFAULT_MODEL = "اسم الفاعل وعمله (صيغ المبالغة).docx"
 DEFAULT_SOURCE = "جذاذة --(أسلوب الاختصاص)3اع- المختار.docx"
@@ -1419,7 +1421,7 @@ def _http_error_message(e: urllib.error.HTTPError) -> str:
 
 def call_gemini(prompt: str, cfg: Settings, required: str = "rows") -> dict:
     """يستدعي Gemini مع إعادة محاولة بتأخير متزايد للأخطاء العابرة (503/429/انقطاع الشبكة/JSON تالف)."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{cfg.ai_model}:generateContent"
+    url = aiconfig.endpoint(cfg.ai_model)
     body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
                        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.2}}
                       ).encode("utf-8")

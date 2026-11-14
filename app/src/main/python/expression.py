@@ -29,6 +29,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Twips
 
+import aiconfig
+
 # ════════════════════════════════ الإعدادات ════════════════════════════════
 DEFAULT_MODEL = "التدرب على كتابة اليوميات (1).docx"
 DEFAULT_SOURCE = "مهارة -كتابة حكاية عجيبة أو من الخيال العلمي---المختار 3إع.docx"
@@ -83,7 +85,7 @@ def _parse_model_json(text: str) -> dict:
     return obj
 
 def call_gemini(prompt: str, cfg: Settings) -> dict:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{cfg.ai_model}:generateContent"
+    url = aiconfig.endpoint(cfg.ai_model)
     body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
                        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.2}}).encode("utf-8")
     headers = {"Content-Type": "application/json", "x-goog-api-key": cfg.api_key}

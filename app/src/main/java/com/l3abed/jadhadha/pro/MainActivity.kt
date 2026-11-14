@@ -92,6 +92,11 @@ private const val DOCX_MIME =
 
 private const val ROOT_NAME = "جذاذات الثالثة إعدادي"
 private const val GEMINI_KEY_URL = "https://aistudio.google.com/app/apikey"
+
+// وسيط الذكاء الاصطناعي (Cloudflare Worker) يحمل مفتاح Gemini سرًّا، فلا يحتاج المستخدم مفتاحًا.
+// يُضبط العنوان والرمز بعد نشر العامل. إن كان الحقلان فارغين عاد التطبيق إلى مفتاح المستخدم/دون ذكاء.
+private const val AI_PROXY_BASE = ""
+private const val AI_PROXY_TOKEN = ""
 private val COMP_FOLDERS = listOf("القراءة", "الدرس اللغوي", "التعبير والإنشاء")
 private val UNIT_FOLDERS = listOf("الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة")
     .map { "الوحدة $it" }
@@ -367,7 +372,7 @@ private fun JadhadhaApp() {
             return
         }
         update(id) { it.copy(importMsg = "جارٍ تحويل النص وتفريغه في القالب…") }
-        val key = if (aiEnabled) apiKey.trim() else ""
+        val (key, proxyBase) = aiArgs(aiEnabled, apiKey)
         scope.launch {
             val res = withContext(Dispatchers.IO) {
                 runCatching {
@@ -376,6 +381,7 @@ private fun JadhadhaApp() {
                     Python.getInstance().getModule("bridge").callAttr(
                         "transcribe_text", id, st.importText, st.activity, key,
                         outDir.absolutePath, model.absolutePath, styleKey, headerJson(hTeacher, hSchool, hLevel),
+                        proxyBase,
                     ).toString()
                 }
             }
@@ -426,8 +432,9 @@ private fun JadhadhaApp() {
             it.copy(busy = true, ok = false, message = "جارٍ التفريغ… قد يستغرق ثوانيَ.", outPath = "", log = "", saveMsg = "")
         }
         scope.launch {
+            val (key, proxyBase) = aiArgs(aiEnabled, apiKey)
             val res = withContext(Dispatchers.Default) {
-                runCatching { runBridge(ctx, id, st.sourcePath, st.sourceName, if (aiEnabled) apiKey.trim() else "", headerJson(hTeacher, hSchool, hLevel), styleKey) }
+                runCatching { runBridge(ctx, id, st.sourcePath, st.sourceName, key, headerJson(hTeacher, hSchool, hLevel), styleKey, proxyBase) }
             }
             res.onSuccess { j ->
                 val ok = j.optBoolean("ok")
@@ -1112,14 +1119,14 @@ private fun SettingsCard(
             Switch(checked = aiOn, onCheckedChange = onToggle)
         }
         Text(
-            if (aiOn) "مفعّل: يملأ الخانات الفارغة إن توفر المفتاح." else "متوقف: يعمل التفريغ دون ذكاء اصطناعي. المفتاح محفوظ ولم يُحذف.",
+            if (aiOn) "مفعّل: يملأ الخانات الفارغة تلقائيًا دون أي إعداد." else "متوقف: يعمل التفريغ دون ذكاء اصطناعي.",
             fontSize = 13.sp,
             color = Muted,
             lineHeight = 20.sp,
         )
-        Text("مفتاح Gemini", fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text("مفتاح Gemini (اختياري)", fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Text(
-            "بدون مفتاح يعمل التفريغ دون إنترنت. مع المفتاح يملأ الذكاء الاصطناعي الخانات الفارغة فقط، ولا يلمس نصاً من المصدر.",
+            "الذكاء الاصطناعي يعمل تلقائيًا دون مفتاح عبر خدمة التطبيق. المفتاح الشخصي خيار متقدّم لمن يريد تجاوز الحدّ اليومي أو استخدام حسابه الخاص.",
             fontSize = 13.sp,
             color = Muted,
             lineHeight = 20.sp,
@@ -1149,7 +1156,7 @@ private fun KeyHelpWindow(onClose: () -> Unit) {
     val ctx = LocalContext.current
     SubWindow("كيف أحصل على مفتاح Gemini؟", onClose, fullHeight = false) {
         Text(
-            "الذكاء الاصطناعي اختياري: بدون مفتاح يعمل التفريغ كاملًا ودون إنترنت. وإن رغبت في تعبئة الخانات الفارغة آليًا فاتبع الخطوات:",
+            "الذكاء الاصطناعي يعمل تلقائيًا دون أي مفتاح عبر خدمة التطبيق. المفتاح الشخصي اختياري، ويفيد إن أردت تجاوز الحدّ اليومي أو استخدام حسابك في Google.",
             fontSize = 13.sp,
             color = Muted,
             lineHeight = 20.sp,
@@ -1258,6 +1265,19 @@ private fun headerJson(teacher: String, school: String, level: String, unit: Str
         .apply { if (unit.isNotBlank()) put("unit", unit) }
         .toString()
 
+/**
+ * يحدّد (المفتاح، جذر الوسيط) لنداء الذكاء الاصطناعي:
+ * مفتاح المستخدم الشخصي إن وُجد ⇒ اتصال مباشر بـGoogle، وإلا ⇒ الوسيط المشترك (بلا مفتاح).
+ * إن كان الذكاء متوقفًا أو لم يُضبط وسيط يعيد قيمتين فارغتين (تفريغ بلا إنترنت).
+ */
+private fun aiArgs(enabled: Boolean, personalKey: String): Pair<String, String> {
+    if (!enabled) return "" to ""
+    val k = personalKey.trim()
+    if (k.isNotEmpty()) return k to ""
+    if (AI_PROXY_BASE.isNotBlank()) return AI_PROXY_TOKEN to AI_PROXY_BASE
+    return "" to ""
+}
+
 private fun runBridge(
     ctx: Context,
     comp: String,
@@ -1266,13 +1286,14 @@ private fun runBridge(
     apiKey: String,
     headerJson: String,
     style: String,
+    proxyBase: String = "",
 ): JSONObject {
     val model = ensureModel(ctx, comp)
     val outDir = File(ctx.filesDir, "out/$comp").apply { mkdirs() }
     val outName = "جذاذة_" + displayName.substringBeforeLast('.') + ".docx"
     val py = Python.getInstance()
     val json = py.getModule("bridge")
-        .callAttr("run", comp, model.absolutePath, sourcePath, outDir.absolutePath, apiKey, outName, headerJson, style)
+        .callAttr("run", comp, model.absolutePath, sourcePath, outDir.absolutePath, apiKey, outName, headerJson, style, proxyBase)
         .toString()
     return JSONObject(json)
 }

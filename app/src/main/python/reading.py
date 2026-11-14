@@ -30,6 +30,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.table import _Cell
 
+import aiconfig
+
 # ── الأسماء الافتراضية للملفات ──
 DEFAULT_MODEL = "المنفى.docx"
 DEFAULT_SOURCE = "جذاذة--- --(مسيرة امرأة)المختار-3إع.docx"
@@ -734,7 +736,7 @@ def _http_error_message(e):
 
 def call_gemini(prompt, ai):
     """يستدعي Gemini مع إعادة محاولة بتأخير متزايد للأخطاء العابرة (503/429/انقطاع الشبكة/JSON تالف)."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{ai.model}:generateContent"
+    url = aiconfig.endpoint(ai.model)
     body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
                        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.3}}
                       ).encode("utf-8")

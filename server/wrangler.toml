@@ -1,0 +1,15 @@
+name = "jadhadha-ai"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+# حدود الاستعمال اليومية (يمكن تعديلها بحرية)
+[vars]
+DEVICE_DAILY_LIMIT = "40"
+IP_DAILY_LIMIT = "300"
+
+# عدّاد تحديد المعدّل. أنشئه بـ:  wrangler kv namespace create RATE_KV
+# ثم ضع المعرّف الناتج مكان <KV_ID>.
+[[kv_namespaces]]
+binding = "RATE_KV"
+id = "<KV_ID>"
